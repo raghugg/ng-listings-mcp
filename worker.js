@@ -41,9 +41,110 @@ async function getSimplifyDetails(url) {
   return { skills, summary };
 }
 
-async function getJobDetails(simplifyUrl) {
+async function getWorkdayDetails(url) {
+  const match = url.match(/https:\/\/([^.]+)\.(wd\d+)\.myworkdayjobs\.com\/(?:[a-z]{2}-[A-Z]{2}\/)?([^/]+)\/job\/[^/]+\/[^_]+_(JR[^?-]+|[A-Z0-9]+-\d+)/);
+  if (!match) return null;
+
+  const [, tenant, , site, jobId] = match;
+  const apiUrl = `https://${tenant}.wd1.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs/${jobId}`;
+
+  try {
+    const res = await fetch(apiUrl, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0" }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const job = data.jobPostingInfo || data;
+    const description = job.jobDescription || job.description || "";
+    const clean = description
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return { skills: [], summary: clean || "No description available" };
+  } catch {
+    return null;
+  }
+}
+
+async function getJsonLdDetails(url) {
+  try {
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/i);
+    if (!jsonLdMatch) return null;
+
+    const data = JSON.parse(jsonLdMatch[1]);
+    if (data["@type"] !== "JobPosting") return null;
+
+    const description = (data.description || "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return { skills: [], summary: description || "No description available" };
+  } catch {
+    return null;
+  }
+}
+
+async function getIcimsDetails(url) {
+  try {
+    // Append ?in_iframe=1 to get server-rendered HTML from iCIMS
+    const iframeUrl = url.split("?")[0] + "?in_iframe=1";
+    const res = await fetch(iframeUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    // iCIMS job content is in div with id="icims_content" or class containing "iCIMS_JobDescription"
+    const descMatch = html.match(/id="icims_content"[^>]*>([\s\S]*?)<\/div>/i)
+      || html.match(/class="[^"]*iCIMS_JobDescription[^"]*"[^>]*>([\s\S]*?)<\/div>/i)
+      || html.match(/<div[^>]+job-description[^>]*>([\s\S]*?)<\/div>/i);
+
+    if (!descMatch) return null;
+
+    const clean = descMatch[1]
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return { skills: [], summary: clean || "No description available" };
+  } catch {
+    return null;
+  }
+}
+
+async function getJobDetails(simplifyUrl, applyUrl) {
   if (simplifyUrl) return await getSimplifyDetails(simplifyUrl);
-  return { skills: [], summary: "No application link available" };
+  if (!applyUrl) return { skills: [], summary: "No application link available" };
+
+  if (applyUrl.includes("myworkdayjobs.com")) {
+    const result = await getWorkdayDetails(applyUrl);
+    if (result) return result;
+  }
+
+  if (applyUrl.includes("icims.com")) {
+    const result = await getIcimsDetails(applyUrl);
+    if (result) return result;
+  }
+
+  const result = await getJsonLdDetails(applyUrl);
+  if (result) return result;
+
+  return { skills: [], summary: "Could not fetch description" };
 }
 
 function extract0dJobs(markdown) {
@@ -93,7 +194,7 @@ async function fetchAndCache(env) {
   const jobs = extract0dJobs(markdown);
 
   const results = await Promise.all(jobs.map(async job => {
-    const { skills, summary } = await getJobDetails(job.simplify_url);
+    const { skills, summary } = await getJobDetails(job.simplify_url, job.apply_url);
     return { ...job, skills, summary };
   }));
 
