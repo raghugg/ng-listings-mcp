@@ -227,10 +227,22 @@ function mcpResult(id, result) {
 
 const TOOL_DEFINITION = {
   name: "get_new_grad_listings",
-  description: `Returns new grad job listings from the Simplify GitHub repo. Listings are cached daily at 12:00 UTC and kept for 7 days.`,
+  description: `Returns new grad job listings from the Simplify GitHub repo. Listings are cached daily at 12:00 UTC and kept for 7 days.
+
+Parameters:
+- date (optional): Specific date to retrieve in YYYY-MM-DD format. Defaults to today.
+- days (optional): Number of past days to retrieve and combine (e.g. days=3 returns last 3 days). Overrides date if provided.
+
+Examples:
+- No params: today's listings
+- date="2026-04-13": listings from April 13
+- days=3: listings from the last 3 days combined`,
   inputSchema: {
     type: "object",
-    properties: {}
+    properties: {
+      date: { type: "string", description: "Specific date in YYYY-MM-DD format" },
+      days: { type: "number", description: "Number of past days to retrieve and combine" }
+    }
   }
 };
 
@@ -256,7 +268,38 @@ async function handleMCP(body, env) {
     const toolName = body.params?.name;
     if (toolName !== "get_new_grad_listings") return mcpError(id, -32602, `Unknown tool: ${toolName}`);
 
+    const args = body.params?.arguments || {};
+
     try {
+      // Multi-day request
+      if (args.days && args.days > 1) {
+        const allJobs = [];
+        const dates = [];
+        for (let i = 0; i < args.days; i++) {
+          const d = new Date();
+          d.setUTCDate(d.getUTCDate() - i);
+          const key = dateKeyForTime(d);
+          const dateStr = key.replace("listings:", "");
+          const cached = await env.LISTINGS_KV.get(key);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            allJobs.push(...parsed.jobs.map(j => ({ ...j, listing_date: dateStr })));
+            dates.push(dateStr);
+          }
+        }
+        const output = { total: allJobs.length, dates_retrieved: dates, jobs: allJobs };
+        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] });
+      }
+
+      // Specific date request
+      if (args.date) {
+        const key = `listings:${args.date}`;
+        const cached = await env.LISTINGS_KV.get(key);
+        if (!cached) return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ error: `No listings found for ${args.date}` }) }] });
+        return mcpResult(id, { content: [{ type: "text", text: cached }] });
+      }
+
+      // Default: today
       const key = todayKey();
       const cached = await env.LISTINGS_KV.get(key);
       if (cached) {
