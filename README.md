@@ -16,8 +16,10 @@ A Cloudflare Worker MCP server for fetching new grad job listings from the [Simp
 - `days=N` — last N days combined
 
 ## Setup
-1. Deploy `worker.js` to a Cloudflare Worker
-2. Create a KV namespace and bind it to the worker with the variable name `LISTINGS_KV`
-3. Add a cron trigger of `0 12 * * *` to run the daily fetch at 12:00 UTC
+1. Create a KV namespace in the Cloudflare dashboard named `LISTINGS_KV` and note the namespace ID
+2. In `wrangler.toml`, replace the placeholder `id` under `[[kv_namespaces]]` with your KV namespace ID
+3. Deploy to Cloudflare via `npx wrangler deploy` or by connecting the repo to a Cloudflare Worker with git integration
 4. Add an `AUTH_TOKEN` secret via the Cloudflare dashboard for bearer token authentication
 5. Connect to Claude Desktop via `mcp-remote` with the `Authorization: Bearer <token>` header
+
+The cron trigger is set to `0 12 * * *` (daily at 12:00 UTC) by default and can be changed in `wrangler.toml`.
