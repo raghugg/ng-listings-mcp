@@ -1,3 +1,10 @@
 name = "ng-listings-mcp"
 main = "worker.js"
 compatibility_date = "2026-04-15"
+
+[[kv_namespaces]]
+binding = "LISTINGS_KV"
+id = "8df54a5ac3df44c09ecb3cfee91ecbcf"
+
+[triggers]
+crons = ["5 13 * * *"]
