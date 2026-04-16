@@ -232,16 +232,22 @@ const TOOL_DEFINITION = {
 Parameters:
 - date (optional): Specific date to retrieve in YYYY-MM-DD format. Defaults to today.
 - days (optional): Number of past days to retrieve and combine (e.g. days=3 returns last 3 days). Overrides date if provided.
+- count (optional): If true, returns only the total number of jobs for the day instead of the full listings.
+- index (optional): 1-based index to retrieve a single job (e.g. index=1 for the first job, index=2 for the second).
 
 Examples:
 - No params: today's listings
 - date="2026-04-13": listings from April 13
-- days=3: listings from the last 3 days combined`,
+- days=3: listings from the last 3 days combined
+- count=true: number of jobs today
+- index=1: first job today`,
   inputSchema: {
     type: "object",
     properties: {
       date: { type: "string", description: "Specific date in YYYY-MM-DD format" },
-      days: { type: "number", description: "Number of past days to retrieve and combine" }
+      days: { type: "number", description: "Number of past days to retrieve and combine" },
+      count: { type: "boolean", description: "If true, return only the total job count for the day" },
+      index: { type: "number", description: "1-based index of a single job to retrieve" }
     }
   }
 };
@@ -299,17 +305,29 @@ async function handleMCP(body, env) {
         return mcpResult(id, { content: [{ type: "text", text: cached }] });
       }
 
-      // Default: today
+      // Fetch or use cached today's listings
       const key = todayKey();
-      const cached = await env.LISTINGS_KV.get(key);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (isCacheFresh(parsed.fetched_at)) {
-          return mcpResult(id, { content: [{ type: "text", text: cached }] });
-        }
+      let cached = await env.LISTINGS_KV.get(key);
+      if (!cached || !isCacheFresh(JSON.parse(cached).fetched_at)) {
+        const output = await fetchAndCache(env);
+        cached = JSON.stringify(output);
       }
-      const output = await fetchAndCache(env);
-      return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] });
+      const parsed = JSON.parse(cached);
+
+      // Count request
+      if (args.count) {
+        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ total: parsed.total, date: parsed.date }) }] });
+      }
+
+      // Single job by 1-based index
+      if (args.index != null) {
+        const job = parsed.jobs[args.index - 1];
+        if (!job) return mcpResult(id, { content: [{ type: "text", text: JSON.stringify({ error: `No job at index ${args.index}. Total jobs: ${parsed.total}` }) }] });
+        return mcpResult(id, { content: [{ type: "text", text: JSON.stringify(job, null, 2) }] });
+      }
+
+      // Default: today
+      return mcpResult(id, { content: [{ type: "text", text: cached }] });
 
     } catch (err) {
       return mcpResult(id, { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true });
