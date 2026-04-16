@@ -136,13 +136,13 @@ async function getJobDetails(simplifyUrl, applyUrl) {
     if (result) return result;
   }
 
-  if (applyUrl.includes("icims.com")) {
-    const result = await getIcimsDetails(applyUrl);
-    if (result) return result;
-  }
+  // if (applyUrl.includes("icims.com")) {
+  //   const result = await getIcimsDetails(applyUrl);
+  //   if (result) return result;
+  // }
 
-  const result = await getJsonLdDetails(applyUrl);
-  if (result) return result;
+  // const result = await getJsonLdDetails(applyUrl);
+  // if (result) return result;
 
   return { skills: [], summary: "Could not fetch description" };
 }
