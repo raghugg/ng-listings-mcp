@@ -7,4 +7,4 @@ binding = "LISTINGS_KV"
 id = "8df54a5ac3df44c09ecb3cfee91ecbcf"
 
 [triggers]
-crons = ["5 13 * * *"]
+crons = ["0 12 * * *"]
